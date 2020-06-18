@@ -1,9 +1,9 @@
 [
-  { "name": "Ray Hyndes", "gender": "M", "identification": 9190603 },
-  { "name": "Hussein Lathey", "gender": "M", "identification": 23216924 },
+  //   { "name": "Ray Hyndes", "gender": "M", "identification": 9190603 },
+  //   { "name": "Hussein Lathey", "gender": "M", "identification": 23216924 },
   { "name": "Foster Letchford", "gender": "M", "identification": 20907042 },
-  { "name": "Kassie Dangerfield", "gender": "F", "identification": 20871368 },
-  { "name": "Kassandra Collens", "gender": "F", "identification": 10546813 },
+  //   { "name": "Kassie Dangerfield", "gender": "F", "identification": 20871368 },
+  //   { "name": "Kassandra Collens", "gender": "F", "identification": 10546813 },
   { "name": "Vevay Sommersett", "gender": "F", "identification": 22588798 },
   { "name": "Davida Angood", "gender": "F", "identification": 19470039 },
   { "name": "Malachi Yearns", "gender": "M", "identification": 28474641 },
