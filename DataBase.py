@@ -15,7 +15,7 @@ myConnection = psycopg2.connect(host = 'hanno.db.elephantsql.com',
                                 dbname= 'xksqcrbt') 
 
 # CREATE TABLE client
-query = """CREATE TABLE IF NOT EXISTS plazas.client (id_client char(10), gender char(1),
+query = """CREATE TABLE IF NOT EXISTS plazas.client (id_client char(10),name VARCHAR, gender char(1),identification VARCHAR(8),
                         primary key (id_client));"""
 cur = myConnection.cursor()
 cur.execute(query)
@@ -55,7 +55,7 @@ cur.close()
 myConnection.commit()
 
 # CREATE TABLE affiliate
-query = """CREATE TABLE IF NOT EXISTS plazas.affiliate (id_client CHAR(10), name VARCHAR, identification VARCHAR(8), points INT, 
+query = """CREATE TABLE IF NOT EXISTS plazas.affiliate (id_client CHAR(10), points INT, 
                         PRIMARY KEY(id_client), FOREIGN KEY(id_client) REFERENCES plazas.client);"""
 cur = myConnection.cursor()
 cur.execute(query)

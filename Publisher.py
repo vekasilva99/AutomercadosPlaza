@@ -1,6 +1,6 @@
 import ssl
 import sys
-import json
+import json 
 import random
 import time
 import paho.mqtt.client as mqtt
@@ -10,9 +10,11 @@ import datetime
 import psycopg2 as psycopg2
 import pandas as pd
 
+
 myConnection = psycopg2.connect(host = 'hanno.db.elephantsql.com',
                                 user= 'xksqcrbt', password ='w5DXUaA1z2Gcs_6jkxCsEVamHAME15N-',
                                 dbname= 'xksqcrbt') 
+
 
 def getClients(list, list2):
     query="""SELECT id_client, gender FROM plazas.client WHERE id_client NOT IN (SELECT id_client FROM plazas.affiliate ) """
@@ -56,6 +58,79 @@ affiliates=[]
 affiliatesIDs=[]
 getAffiliates(affiliates,affiliatesIDs)
 print(affiliatesIDs)
+
+def getProducts(list, list2, currentDate, currentHour):
+    query=query="""
+WITH todoshelf AS(
+    WITH cuentashelf AS(
+        SELECT shelf.id_store, shelf.id_shelf, product.id_product, product.name, shelf_quantity.quantity,
+        shelf_quantity.date,shelf_quantity.hour
+        FROM plazas.product AS product
+        INNER JOIN plazas.shelf AS shelf
+        ON shelf.id_product=product.id_product
+        INNER JOIN plazas.shelf_quantity AS shelf_quantity
+        ON shelf.id_shelf=shelf_quantity.id_shelf AND shelf.id_store=shelf_quantity.id_store
+        WHERE shelf_quantity.date <= '2020-06-21'
+        GROUP BY product.id_product, shelf.id_store, shelf.id_shelf,shelf_quantity.quantity,
+        shelf_quantity.date,shelf_quantity.hour
+        ORDER BY shelf.id_store,shelf.id_shelf, product.id_product)
+    SELECT
+      id_store, id_shelf, id_product, name, quantity, date, hour
+    FROM (
+      SELECT
+        ROW_NUMBER() OVER (PARTITION BY id_store, id_shelf ORDER BY id_store, id_shelf) AS r,
+        t.*
+      FROM
+        cuentashelf t) x
+    WHERE
+      x.r <= 1),
+todocost AS (
+    WITH cuentacost AS (
+        SELECT cost.id_product, cost.date, cost.cost
+        FROM plazas.cost AS cost
+        WHERE cost.date <= '2020-06-21'
+        GROUP BY cost.id_product, cost.date, cost.cost
+        ORDER BY cost.id_product, cost.date DESC)
+    SELECT
+      id_product, date, cost
+    FROM (
+      SELECT
+        ROW_NUMBER() OVER (PARTITION BY id_product) AS r,
+        t.*
+      FROM
+        cuentacost t) x
+    WHERE
+      x.r <= 1)
+SELECT ts.id_store AS StoreID, ts.id_shelf AS ShelfID, ts.id_product AS ProductID,
+ts.name AS ProductName, ts.quantity AS Quantity, tc.cost AS Cost, ts.date AS Date, ts.hour AS Hour
+FROM todoshelf AS ts
+INNER JOIN todocost AS tc ON ts.id_product = tc.id_product;
+"""
+    
+    df=pd.read_sql_query(query,myConnection,params=[currentDate])
+    for index, row in df.iterrows():
+        product={
+        'id_product':row["productid"],
+        'name':row["productname"],
+        'id_store':str(row["storeid"]),
+        'id_shelf':str(row["shelfid"]),
+        'quantity':str(row["quantity"]),
+        'cost':str(row["cost"]),
+        'date':str(row["date"]),
+        'hour':str(row["hour"]),
+
+        }
+    
+        
+
+        list.append(product)
+
+
+
+products=[]
+productsIDs=[]
+getProducts(products,productsIDs, '2020-06-02', '17:00:00')
+print(products)
 
 peopleInStore1=[]
 peopleInStore2=[]
@@ -133,23 +208,99 @@ def enteringStore(peopleInStore):
                 # }      
                 entry=True
         
+def productsStore(storeID):
+    productsInStore=[]
+    for x in products:
+        if(x.get('id_store')==storeID):
+            productsInStore.append(x)
+    return productsInStore
+
+def chosenProduct(shelfID, inventory):
+    product={}
+    for x in inventory:
+        if(x.get('id_shelf')==shelfID):
+         product=x 
+   
+    return product  
+
+def productDevolution(cart):
+    devolution=False
+    while(devolution==False):
+        if(int(np.random.uniform(1,10))>9):
+            returned=cart[int(np.random.uniform(0,len(cart)-1))]
+            cart.remove(returned)
+            #IOT AGREGAR LA CANTIDAD AGAIN
+        else:
+            devolution=True
+    return cart
+
+def queryFunction(cart, id_cliente, store, date, hour, bank):
+    print("VAMOIS")
+    print(str(cart).strip('[]'))
+    print(type(id_cliente))
+    cur = myConnection.cursor()
+    cur.execute("SELECT plazas.Purchase(array[%s]::plazas.carritos[],%s::text,%s::text,%s::text,%s::text,%s::text);"% (str(cart).strip('[]'),id_cliente, store, date, hour, bank))
+    cur.close()
+    myConnection.commit()
+
+def takeProduct(person, storeID):
+    buying=True
+    cart=[]
+    inventory=productsStore(storeID)
+    prueba=[]
+    while(buying==True):
+        print("Buyinr")
+        if(len(inventory)==0):
+                buying=False 
+        if(int(np.random.uniform(1,10))<8):
+            print("Comprar")
+            producto={}
+            while(producto=={} and len(inventory)!=0):
+                shelf=str(int(np.random.uniform(1,len(inventory))))
+                producto=chosenProduct(shelf,inventory)
+                print("Product")
+                print(producto)
+            maxquantity=int(producto.get('quantity'))
+            porcentage=int(np.random.uniform(1,100))/100
+            quantity=str(int(porcentage*maxquantity))
+            
+            inventory.remove(producto)
+           
+            #IOT
+            item=(str(producto.get('id_product')),producto.get('name'),str(quantity), producto.get('cost'))
+            print(item)
+            cart.append(item)
+            
+            # data= list(cart.items())
+            # print(data)
+            # cartArray= np.array(data)
+            # print(cartArray[0][0])     
+                 
+        else:
+            buying=False
+  
+    return cart
+
+    
+
+   
+    
+  
 
 
 
-storeID=int(np.random.uniform(1,2))
-if(storeID==1):
-    entrance(peopleInStore1)
-else:
-    entrance(peopleInStore2)
 
-peopleInStore1.append(clients[0])
-peopleInStore1.append(clients[1])
-peopleInStore1.append(affiliates[0])
-peopleInStore1.append(affiliates[1])
-peopleInStore1.append(affiliates[2])
-print(peopleInStore1)
 
-leavingStore(peopleInStore1)
-print("despues")
-print(peopleInStore1)
 
+# storeID=int(np.random.uniform(1,2))
+# if(storeID==1):
+#     entrance(peopleInStore1)
+# else:
+#     entrance(peopleInStore2)
+
+carrito=takeProduct(affiliates[0], '1')
+
+
+if(len(carrito)!=0):
+    print(carrito)
+    queryFunction(carrito,'9058501784','1','20200602','170000','1')
