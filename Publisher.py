@@ -7,6 +7,8 @@ import paho.mqtt.client as mqtt
 import paho.mqtt.publish
 import numpy as np
 import datetime
+from datetime import date
+import calendar 
 import psycopg2 as psycopg2
 import pandas as pd
 
@@ -17,12 +19,14 @@ myConnection = psycopg2.connect(host = 'hanno.db.elephantsql.com',
 
 
 def getClients(list, list2):
-    query="""SELECT id_client, gender FROM plazas.client WHERE id_client NOT IN (SELECT id_client FROM plazas.affiliate ) """
+    query="""SELECT id_client,name,identification, gender FROM plazas.client WHERE id_client NOT IN (SELECT id_client FROM plazas.affiliate ) """
     
     df=pd.read_sql_query(query,myConnection)
     for index, row in df.iterrows():
         client={
         'id_client':row["id_client"],
+        'name':row["name"],
+        'identification':row["identification"],
         'gender':row["gender"]
         }
         id={
@@ -35,10 +39,11 @@ def getClients(list, list2):
 clients=[]
 clientsIDs=[]
 getClients(clients,clientsIDs)
-print(clientsIDs)
+# print("CLIENTES")
+# print(clientsIDs)
 
 def getAffiliates(list, list2):
-    query="""SELECT id_client, name, points FROM plazas.affiliate """
+    query="""SELECT plazas.client.id_client AS id_client, plazas.client.name AS name, plazas.affiliate.points AS points FROM plazas.affiliate INNER JOIN plazas.client ON plazas.client.id_client=plazas.affiliate.id_client"""
     
     df=pd.read_sql_query(query,myConnection)
     for index, row in df.iterrows():
@@ -57,7 +62,8 @@ def getAffiliates(list, list2):
 affiliates=[]
 affiliatesIDs=[]
 getAffiliates(affiliates,affiliatesIDs)
-print(affiliatesIDs)
+# print("AFILIADOS")
+# print(affiliates)
 
 def getProducts(list, list2, currentDate, currentHour):
     query=query="""
@@ -130,7 +136,7 @@ INNER JOIN todocost AS tc ON ts.id_product = tc.id_product;
 products=[]
 productsIDs=[]
 getProducts(products,productsIDs, '2020-06-02', '17:00:00')
-print(products)
+# print(products)
 
 peopleInStore1=[]
 peopleInStore2=[]
@@ -141,21 +147,34 @@ def IDGenerators(n):
     range_end=(10**n)-1
     return (int(np.random.uniform(range_start,range_end)))
 
-def entrance(peopleInStore):
+def entrance(peopleInStore,client, currentTime):
     
     if((int(np.random.uniform(1,3))!=1) or len(peopleInStore)==0 ):
         print("Entering")
-        enteringStore(peopleInStore)
+        person=enteringStore(peopleInStore,currentTime)
     else:
         print("Leaving")
+    return person
 
 def leavingStore(peopleInStore):
     if(len(peopleInStore)!=0):
         peopleInStore.remove(random.choice(peopleInStore))
 
+def getJsonData():
+    with open('Affiliate.json') as json_file:  
+        data = json.load(json_file)
+        
+    return data
 
-def enteringStore(peopleInStore):
+def addClient(client):
+    cur = myConnection.cursor()
+    cur.execute("INSERT INTO plazas.client (id_client,name,gender,identification) VALUES ('%s','%s','%s','%s')"%(str(client['id_client']), str(client['name']),str(client['gender']),str(client['identification'])))
+    cur.close()
+    myConnection.commit()
+
+def enteringStore(peopleInStore, currentTime):
     typeVisitor=int(np.random.uniform(1,10))
+    datosRandom=getJsonData()
     entry=False
     print(typeVisitor)
 
@@ -176,15 +195,15 @@ def enteringStore(peopleInStore):
                 entry=True
         elif(typeVisitor<5):
             print("Desconocido")
-            if(int(np.random.uniform(1,2))==1):
-                gender='F'
-            else:
-                gender='M'    
+            indexD=int(np.random.uniform(0,len(datosRandom))) 
+            clientD=datosRandom[indexD]  
+            datosRandom.remove(clientD)
             clientID={'id_client':str(IDGenerators(10))}      
             while((clientID in clientsIDs) or (clientID in affiliatesIDs)):
                 clientID={'id_client':str(IDGenerators(10))}
-            person={'id_client':clientID.get('id_client'), 'gender':gender}
+            person={'id_client':clientID.get('id_client'), 'name':clientD.get('name'),'gender':clientD.get('gender'),'identification':clientD.get('identification')}
             peopleInStore.append(person)
+            addClient(person)
             # payload={
             #     "id_client":clientID.get('id_client'),
             #     "gender":gender,
@@ -207,6 +226,7 @@ def enteringStore(peopleInStore):
                 # "date":currentDate,
                 # }      
                 entry=True
+    return person
         
 def productsStore(storeID):
     productsInStore=[]
@@ -229,6 +249,7 @@ def productDevolution(cart):
         if(int(np.random.uniform(1,10))>9):
             returned=cart[int(np.random.uniform(0,len(cart)-1))]
             cart.remove(returned)
+            substractQuantity(returned.get('id_shelf'), returned.get('id_store'), returned.get('quantity'))
             #IOT AGREGAR LA CANTIDAD AGAIN
         else:
             devolution=True
@@ -243,13 +264,27 @@ def queryFunction(cart, id_cliente, store, date, hour, bank):
     cur.close()
     myConnection.commit()
 
-def takeProduct(person, storeID):
+def substractQuantity(shelfID, storeID, quantity,currentTime, currentDate):
+
+    cur = myConnection.cursor()
+    cur.execute("INSERT INTO plazas.shelf_quantity VALUES (%s,%s,(SELECT plazas.shelf_quantity.quantity FROM plazas.shelf_quantity WHERE plazas.shelf_quantity.id_store='%s' AND plazas.shelf_quantity.id_shelf=%s AND plazas.shelf_quantity.date<=CAST('%s' AS DATE) ORDER BY plazas.shelf_quantity.date DESC,plazas.shelf_quantity.hour DESC LIMIT 1)-CAST(%s AS integer),CAST('%s' AS TIME),CAST('%s' AS DATE))"%(str(storeID),shelfID,str(storeID),shelfID,currentDate,quantity,currentTime,currentDate))
+    cur.close()
+    myConnection.commit()
+
+def restoreQuantity(shelfID, storeID, quantity):
+   cur = myConnection.cursor()
+    cur.execute("INSERT INTO plazas.shelf_quantity VALUES (%s,%s,(SELECT plazas.shelf_quantity.quantity FROM plazas.shelf_quantity WHERE plazas.shelf_quantity.id_store='%s' AND plazas.shelf_quantity.id_shelf=%s AND plazas.shelf_quantity.date<=CAST('%s' AS DATE) ORDER BY plazas.shelf_quantity.date DESC,plazas.shelf_quantity.hour DESC LIMIT 1)+CAST(%s AS integer),CAST('%s' AS TIME),CAST('%s' AS DATE))"%(str(storeID),shelfID,str(storeID),shelfID,currentDate,quantity,currentTime,currentDate))
+    cur.close()
+    myConnection.commit()
+
+def takeProduct(person, storeID, currentTime):
     buying=True
     cart=[]
     inventory=productsStore(storeID)
+    date=date(currentTime.year,currentTime.month,currentTime.day).isoformat()
     prueba=[]
     while(buying==True):
-        print("Buyinr")
+        print("ESTA EN LA TIENDA "+storeID)
         if(len(inventory)==0):
                 buying=False 
         if(int(np.random.uniform(1,10))<8):
@@ -258,11 +293,13 @@ def takeProduct(person, storeID):
             while(producto=={} and len(inventory)!=0):
                 shelf=str(int(np.random.uniform(1,len(inventory))))
                 producto=chosenProduct(shelf,inventory)
-                print("Product")
+                print("PRODUCT")
                 print(producto)
             maxquantity=int(producto.get('quantity'))
             porcentage=int(np.random.uniform(1,100))/100
             quantity=str(int(porcentage*maxquantity))
+            substractQuantity(shelf, storeID, quantity)
+
             
             inventory.remove(producto)
            
@@ -270,6 +307,7 @@ def takeProduct(person, storeID):
             item=(str(producto.get('id_product')),producto.get('name'),str(quantity), producto.get('cost'))
             print(item)
             cart.append(item)
+            substractQuantity(str(shelfID), str(storeID), str(quantity),str(currentTime),str(date))
             
             # data= list(cart.items())
             # print(data)
@@ -281,16 +319,43 @@ def takeProduct(person, storeID):
   
     return cart
 
+
+    
+def main():
+    host = "broker.hivemq.com"
+    client = paho.mqtt.client.Client("Automercado Plaza", False)
+    client.qos = 1
+    client.connect(host=host)
+
+    currentTime = datetime.datetime.now().replace(hour=9, minute=0)
+    days=(calendar.monthrange(currentTime.year, currentTime.month)[1])-currentTime.day
     
 
-   
+    while(currentTime.month!=12):
+
+        while(days>0):
+
+            while(currentTime.hour < 20):
+                storeID=int(np.random.uniform(1,2))
+                if(storeID==1):
+                    person=entrance(peopleInStore1,client,currentTime)
+                else:
+                    person=entrance(peopleInStore2,client,currentTime)
+                takeProduct(person, storeID)
+                
+
+
+
     
-  
+currentTime = datetime.datetime.now().replace(hour=9, minute=0)
+date=date(currentTime.year,currentTime.month,currentTime.day).isoformat()
 
 
+substractQuantity('1', '1', '1',str(currentTime),str(date))
 
+# main()
 
-
+# substractQuantity(shelfID, storeID, quantity,currentHour):
 
 # storeID=int(np.random.uniform(1,2))
 # if(storeID==1):
@@ -298,9 +363,9 @@ def takeProduct(person, storeID):
 # else:
 #     entrance(peopleInStore2)
 
-carrito=takeProduct(affiliates[0], '1')
+# carrito=takeProduct(affiliates[0], '1')
 
 
-if(len(carrito)!=0):
-    print(carrito)
-    queryFunction(carrito,'9058501784','1','20200602','170000','1')
+# if(len(carrito)!=0):
+#     print(carrito)
+#     queryFunction(carrito,'1092087244','1','20200602','130000','1')

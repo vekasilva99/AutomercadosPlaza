@@ -46,3 +46,34 @@ myConnection.commit()
 # cur.execute(query)
 # cur.close()
 # myConnection.commit()
+
+query="""CREATE OR REPLACE FUNCTION affiliateClient()
+  RETURNS trigger AS
+$$
+DECLARE
+BEGIN
+    IF (NEW.id_client NOT IN (SELECT plazas.affiliate.id_client FROM plazas.affiliate) AND (SELECT COUNT(*) FROM plazas.visit WHERE id_client=NEW.id_client GROUP BY id_client)=4) THEN
+        INSERT INTO plazas.affiliate VALUES (NEW.id_client, 0);
+    END IF;
+
+
+    RETURN NEW;
+END;
+$$
+LANGUAGE plpgsql;
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
+
+# query="""CREATE TRIGGER AffiliateClient 
+# AFTER INSERT
+#    ON plazas.visit
+#    FOR EACH ROW
+#        EXECUTE PROCEDURE affiliateClient()
+# """
+# cur = myConnection.cursor()
+# cur.execute(query)
+# cur.close()
+# myConnection.commit()
