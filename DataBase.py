@@ -135,7 +135,15 @@ cur.close()
 myConnection.commit()
 
 # CREATE TABLE thermometer
-query = """CREATE TABLE IF NOT EXISTS plazas.thermometer (id_store VARCHAR, temperature INT, hour TIME,date DATE,
+query = """CREATE TABLE IF NOT EXISTS plazas.thermometer (id_store VARCHAR, id_thermometer VARCHAR, mintemp INT, maxtemp INT,
+                        PRIMARY KEY (id_store), FOREIGN KEY(id_store) REFERENCES plazas.store);"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
+
+# CREATE TABLE ther_register
+query = """CREATE TABLE IF NOT EXISTS plazas.ther_register (id_store VARCHAR, id_thermometer VARCHAR, temperature INT, hour TIME, date DATE,
                         PRIMARY KEY (id_store, date, hour), FOREIGN KEY(id_store) REFERENCES plazas.store);"""
 cur = myConnection.cursor()
 cur.execute(query)
@@ -144,8 +152,7 @@ myConnection.commit()
 
 # CREATE TABLE restock
 query = """CREATE TABLE IF NOT EXISTS plazas.restock (id_store VARCHAR, id_shelf SERIAL, id_warehouse VARCHAR, quantity INT, hour TIME,date DATE,  
-                        PRIMARY KEY (id_store,id_shelf, id_warehouse, date, hour), FOREIGN KEY(id_store, id_shelf) REFERENCES plazas.shelf(id_store,id_shelf), 
-                            FOREIGN KEY(id_warehouse) REFERENCES plazas.warehouse);"""
+                        PRIMARY KEY (id_store,id_shelf, id_warehouse, date, hour), FOREIGN KEY(id_store, id_shelf) REFERENCES plazas.shelf(id_store,id_shelf), FOREIGN KEY(id_warehouse) REFERENCES plazas.warehouse);"""
 cur = myConnection.cursor()
 cur.execute(query)
 cur.close()
