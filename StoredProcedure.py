@@ -17,11 +17,11 @@ myConnection = psycopg2.connect(host = 'hanno.db.elephantsql.com',
 
 
 
-# query="""CREATE TYPE plazas.carritos AS (id_product VARCHAR,name VARCHAR ,quantity VARCHAR, cost VARCHAR)"""
-# cur = myConnection.cursor()
-# cur.execute(query)
-# cur.close()
-# myConnection.commit()
+query="""CREATE TYPE plazas.carritos AS (id_product VARCHAR,name VARCHAR ,quantity VARCHAR, cost VARCHAR)"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
 
 
 query="""CREATE OR REPLACE FUNCTION plazas.Purchase(cart plazas.carritos[], id_cliente varchar, storeID varchar, date varchar, hour varchar, bank VARCHAR)
@@ -43,6 +43,50 @@ query="""CREATE OR REPLACE FUNCTION plazas.Purchase(cart plazas.carritos[], id_c
   $$
   LANGUAGE plpgsql;
 
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
+
+query="""
+CREATE OR REPLACE FUNCTION checkBankCredit(datecheck timestamp)
+  RETURNS table (BankID integer, BankName character varying, BankCredit numeric) AS $$
+      BEGIN
+        RETURN QUERY
+            WITH suma AS(
+            SELECT id_bank, SUM(total_bs) AS total
+            FROM plazas.bill
+            WHERE date <= datecheck
+            GROUP BY id_bank)
+
+            SELECT suma.id_bank, plazas.bank.name, suma.total
+            FROM suma INNER JOIN plazas.bank ON suma.id_bank = plazas.bank.id_bank
+            ORDER BY suma.id_bank;
+      END;
+  $$
+  LANGUAGE plpgsql;
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
+
+query="""
+CREATE OR REPLACE FUNCTION monthPoints(month integer)
+  RETURNS table (ClientID character(10), Name character varying, Points integer) AS $$
+      BEGIN
+        RETURN QUERY
+SELECT DISTINCT bill.id_client, client.name, affiliate.points
+FROM plazas.bill AS bill
+INNER JOIN plazas.affiliate AS affiliate 
+ON bill.id_client = affiliate.id_client
+INNER JOIN plazas.client AS client
+ON bill.id_client = client.id_client
+WHERE EXTRACT(MONTH FROM date) = month;
+      END;
+  $$
+  LANGUAGE plpgsql;
 """
 cur = myConnection.cursor()
 cur.execute(query)

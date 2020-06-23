@@ -12,11 +12,21 @@ import calendar
 import psycopg2 as psycopg2
 import pandas as pd
 
-print("HOLA")
+
 myConnection = psycopg2.connect(host = 'hanno.db.elephantsql.com',
                                 user= 'xksqcrbt', password ='w5DXUaA1z2Gcs_6jkxCsEVamHAME15N-',
                                 dbname= 'xksqcrbt') 
-
+#Lists to save the data from the database
+peopleInStore1=[]
+peopleInStore2=[]
+clients=[]
+clientsIDs=[]
+affiliates=[]
+affiliatesIDs=[]
+products=[]
+productsIDs=[]
+thermo=[]
+visits={}
 
 def getClients(list, list2):
     query="""SELECT id_client,name,identification, gender FROM plazas.client WHERE id_client NOT IN (SELECT id_client FROM plazas.affiliate ) """
@@ -35,12 +45,7 @@ def getClients(list, list2):
         list2.append(id)
         list.append(client)
 
-
-clients=[]
-clientsIDs=[]
 getClients(clients,clientsIDs)
-# print("CLIENTES")
-# print(clientsIDs)
 
 def getAffiliates(list, list2):
     query="""SELECT plazas.client.id_client AS id_client, plazas.client.name AS name, plazas.affiliate.points AS points FROM plazas.affiliate INNER JOIN plazas.client ON plazas.client.id_client=plazas.affiliate.id_client"""
@@ -59,12 +64,7 @@ def getAffiliates(list, list2):
 
         list.append(affiliate)
 
-affiliates=[]
-affiliatesIDs=[]
 getAffiliates(affiliates,affiliatesIDs)
-# print("AFILIADOS")
-# print(affiliates)
-
 
 def getProducts(list, list2, currentDate, currentHour):
     query=query="""
@@ -133,14 +133,6 @@ INNER JOIN todocost AS tc ON ts.id_product = tc.id_product;
         list.append(product)
 
 
-currentTime = datetime.datetime.now().replace(hour=9, minute=0)
-currentDate=date(currentTime.year,currentTime.month,currentTime.day)
-
-products=[]
-productsIDs=[]
-getProducts(products,productsIDs, currentDate, '17:00:00')
-# print(products)
-
 def getMaxQttyShelf(storeID, shelfID):
     query="""SELECT max_capacity FROM plazas.shelf WHERE id_store=%s AND id_shelf=%s """
     
@@ -149,7 +141,47 @@ def getMaxQttyShelf(storeID, shelfID):
         maxCap=row["max_capacity"]
     return maxCap
 
+def getHourOfVisit(personID, currentDate):
+    query="""SELECT hour FROM plazas.visit WHERE id_client=%s AND date=CAST(%s AS DATE) ORDER BY hour DESC LIMIT 1"""
+    
+    df=pd.read_sql_query(query,myConnection, params=[personID, currentDate])
+    for index, row in df.iterrows():
+        t=row["hour"]
+    return t
 
+def getThermometers(list):
+    query="""SELECT id_store,id_thermometer,mintemp, maxtemp FROM plazas.thermometer"""
+    
+    df=pd.read_sql_query(query,myConnection)
+    for index, row in df.iterrows():
+        thermometer={
+        'id_store':row["id_store"],
+        'id_thermometer':row["id_thermometer"],
+        'mintemp':row["mintemp"],
+        'maxtemp':row["maxtemp"]
+        }
+
+        list.append(thermometer)
+
+getThermometers(thermo)
+
+def getDateOfLastVisit():
+    query="""SELECT date FROM plazas.visit ORDER BY date DESC LIMIT 1"""
+    
+    df=pd.read_sql_query(query,myConnection)
+    for index, row in df.iterrows():
+        d=row["date"]
+    return d
+
+last_date=getDateOfLastVisit() #Last day of visit-Add 1 day for the beginning of the simulation
+
+def getQttyStoredIn(storeID, productID):
+    query="""SELECT quantity FROM plazas.stored_in WHERE id_warehouse=%s AND id_product=%s ORDER BY date DESC, hour DESC LIMIT 1 """
+    
+    df=pd.read_sql_query(query,myConnection, params=[storeID, productID])
+    for index, row in df.iterrows():
+        qtty=row["quantity"]
+    return qtty
 
 def getStores(list):
     query="""SELECT plazas.store.id_store AS id_store, plazas.store.name AS name, plazas.store.max_capacity AS max_capacity FROM plazas.store"""
@@ -167,8 +199,6 @@ def getStores(list):
 
 stores=[]
 getStores(stores)
-peopleInStore1=[]
-peopleInStore2=[]
 
 
 def IDGenerators(n):
@@ -177,23 +207,24 @@ def IDGenerators(n):
     return (int(np.random.uniform(range_start,range_end)))
 
 def entrance(peopleInStore,client, currentTime,storeID, waitingList):
-    
-    if((int(np.random.uniform(1,3))!=1) or len(peopleInStore)==0 ):
-        print("Entering")
-        print(storeID)
+    person={}
+    if((int(np.random.uniform(1,7))!=1) or len(peopleInStore)==0 ): #There is a chance that a person does not enter the store
         enteringStore(peopleInStore,currentTime, storeID, client)
     else:
-        print("Leaving")
-        print(storeID)
-        leavingStore(peopleInStore, storeID, waitingList,currentTime)
+        leavingStore(peopleInStore, storeID, waitingList,currentTime,person,client)
     
-def leavingStore(peopleInStore, storeID, waitingList,currentTime):
-    if(len(peopleInStore)!=0):
+def leavingStore(peopleInStore, storeID, waitingList,currentTime,person, client):
+    if(len(peopleInStore)!=0 and len(person)==0):
+        print("SOMEONE LEFT THE STORE "+str(storeID))
         peopleInStore.remove(random.choice(peopleInStore))
-    if((len(peopleInStore)+1)==2 and len(waitingList)!=0):
-        print("Sale de la Waiting")
+    if(len(person)!=0):
+        print(str(person.get("id_client"))+" LEFT THE STORE "+str(storeID))
+        peopleInStore.remove(person)
+    if((len(peopleInStore)+1)==2 and waitingList!=0):
+        print("ALGUIEN SALIO DE LA LISTA DE ESPERA DE LA TIENDA "+str(storeID))
         waitingList-=1
-        enteringStore(peopleInStore,currentTime)
+        enteringStore(peopleInStore,currentTime,storeID, client)
+    time.sleep(0.5)
 
 def getJsonData():
     with open('Affiliate.json') as json_file:  
@@ -207,6 +238,7 @@ def enteringStore(peopleInStore, currentTime, storeID, client):
     entry=False
     currentDate=date(currentTime.year,currentTime.month,currentTime.day).isoformat()
     # print(typeVisitor)
+    
 
     while(entry==False):
         if(typeVisitor>6 and len(affiliates)!=0):
@@ -214,7 +246,7 @@ def enteringStore(peopleInStore, currentTime, storeID, client):
             if((person in peopleInStore1) or (person in peopleInStore2)):
                 typeVisitor=int(np.random.uniform(1,10))
             else:
-                print("Afiliado")
+                print("ESTA ENTRANDO EL AFILIADO "+str(person.get('id_client'))+" A LA TIENDA "+str(storeID))
                 payload={
                 "id_client":str(person.get('id_client')),
                 "id_store":str(storeID),
@@ -222,17 +254,22 @@ def enteringStore(peopleInStore, currentTime, storeID, client):
                 "date":str(currentDate),
                 }      
                 peopleInStore.append(person)
+                visits.update({str(person.get('id_client')):currentTime})
+                
+                client.publish("Plazas/Entrance/Visit", json.dumps(payload), qos=0)
                 entry=True
+               
         elif(typeVisitor<5):
-            print("Desconocido")
+            print("ESTA ENTRANDO UN DESCONOCIDO "+"A LA TIENDA "+str(storeID))
             indexD=int(np.random.uniform(0,len(datosRandom))) 
             clientD=datosRandom[indexD]  
             datosRandom.remove(clientD)
-            clientID={'id_client':str(IDGenerators(10))}      
+            clientID={'id_client':str(IDGenerators(10))}    
+             
             while((clientID in clientsIDs) or (clientID in affiliatesIDs)):
                 clientID={'id_client':str(IDGenerators(10))}
             person={'id_client':clientID.get('id_client'), 'name':clientD.get('name'),'gender':clientD.get('gender'),'identification':clientD.get('identification')}
-            peopleInStore.append(person)
+            
             payload2={
                 "id_client":str(person.get('id_client')),
                 "name":str(person.get('name')),
@@ -245,24 +282,35 @@ def enteringStore(peopleInStore, currentTime, storeID, client):
                 "id_store":str(storeID),
                 "hour":str(currentTime),
                 "date":str(currentDate),
-            }        
+            } 
+            time.sleep(1.5) 
+            getClients(clients,clientsIDs)
+            if(str(person.get('id_client') in clientsIDs)):
+                client.publish("Plazas/Entrance/Visit", json.dumps(payload), qos=0)
+                peopleInStore.append(person)
+                visits.update({str(person.get('id_client')):currentTime})
+                print("DESCONOCIDO ENTRO")
+                  
             entry=True
         else:
             person=random.choice(clients)
             if((person in peopleInStore1) or (person in peopleInStore2) or len(clients)==0):
                 typeVisitor=int(np.random.uniform(1,10))
             else:
-                print("Cliente")
+                print("ESTA ENTRANDO EL CLIENTE "+str(person.get('id_client'))+" A LA TIENDA "+str(storeID))
                 peopleInStore.append(person)
                 payload={
                 "id_client":str(person.get('id_client')),
                 "id_store":str(storeID),
                 "hour":str(currentTime),
                 "date":str(currentDate),
-                }          
+                } 
+                client.publish("Plazas/Entrance/Visit", json.dumps(payload), qos=0)      
+                visits.update({str(person.get('id_client')):currentTime})
+                   
                 entry=True
-    client.publish("Plazas/Entrance/Visit", json.dumps(payload), qos=0)
-          
+                time.sleep(1) 
+       
 def productsStore(storeID):
     productsInStore=[]
     for x in products:
@@ -301,15 +349,6 @@ def productDevolution(cart, client, currentDate, currentTime):
             devolution=True
     return cart
 
-def queryFunction(cart, id_cliente, store, date, hour, bank):
-    print(str(cart).strip('[]'))
-    print(type(id_cliente))
-    cur = myConnection.cursor()
-    cur.execute("SELECT plazas.Purchase(array[%s]::plazas.carritos[],%s::text,%s::text,%s::text,%s::text,%s::text);"% (str(cart).strip('[]'),id_cliente, store, date, hour, bank))
-    cur.close()
-    myConnection.commit()
-
-def substractQuantity(shelfID, storeID, quantity,currentTime, currentDate):
 
     cur = myConnection.cursor()
     cur.execute("INSERT INTO plazas.shelf_quantity VALUES (%s,%s,(SELECT plazas.shelf_quantity.quantity FROM plazas.shelf_quantity WHERE plazas.shelf_quantity.id_store='%s' AND plazas.shelf_quantity.id_shelf=%s AND plazas.shelf_quantity.date<=CAST('%s' AS DATE) ORDER BY plazas.shelf_quantity.date DESC,plazas.shelf_quantity.hour DESC LIMIT 1)-CAST(%s AS integer),CAST('%s' AS TIME),CAST('%s' AS DATE))"%(str(storeID),shelfID,str(storeID),shelfID,currentDate,quantity,currentTime,currentDate))
@@ -323,198 +362,201 @@ def restoreQuantity(shelfID, storeID, quantity):
     myConnection.commit()
 
 def takeProduct(person, storeID, currentTime, client, currentDate):
+    
     buying=True
     cart=[]
-    inventory=productsStore(storeID)
+    
     prueba=[]
     while(buying==True):
-        print("ESTA EN LA TIENDA "+storeID)
+        getProducts(products,productsIDs, currentDate, currentTime)
+        
+        inventory=productsStore(storeID)
         if(len(inventory)==0):
                 buying=False 
         if(int(np.random.uniform(1,10))<8):
-            print("Comprar")
             producto={}
             while(producto=={} and len(inventory)!=0):
                 shelf=str(int(np.random.uniform(1,len(inventory))))
                 producto=chosenProduct(shelf,inventory)
-            maxquantity=int(producto.get('quantity'))
-            porcentage=int(np.random.uniform(1,100))/100
-            quantity=str(int(porcentage*maxquantity))
-        
-            payload={
-                "id_shelf":str(shelf),
-                "id_store":str(storeID),
-                "quantity":str(quantity),
-                "quantity_available":str(maxquantity-int(quantity)),
-                "currentTime":str(currentTime),
-                "currentDate":str(currentDate),
-                "max_capacity":str(getMaxQttyShelf(storeID, shelf))
-            }
-            print("Payload")
-            print(payload)
-            client.publish("Plazas/Shelf/Substract", json.dumps(payload), qos=0)  
-            
-
-            inventory.remove(producto)
-           
-            #IOT
-            item=(str(producto.get('id_product')),producto.get('name'),str(quantity), producto.get('cost'))
-            print(item)
-            cart.append(item)
+                
+            if(int(producto.get('quantity'))>0):
+                maxquantity=int(producto.get('quantity'))
+                porcentage=int(np.random.uniform(1,100))/100
+                quantity=str(int(porcentage*maxquantity))
+                payload={
+                    "id_shelf":str(shelf),
+                    "id_store":str(storeID),
+                    "id_product":str(producto.get("id_product")),
+                    "stored_in":str(getQttyStoredIn(str(storeID), int(producto.get("id_product")))),
+                    "quantity":str(quantity),
+                    "quantity_available":str(maxquantity-int(quantity)),
+                    "currentTime":str(currentTime),
+                    "currentDate":str(currentTime),
+                    "max_capacity":str(getMaxQttyShelf(storeID, shelf))
+                }
+                client.publish("Plazas/Shelf/Substract", json.dumps(payload), qos=0)  
+                inventory.remove(producto)
+                item=(str(producto.get('id_product')),producto.get('name'),str(quantity), producto.get('cost'))
+                cart.append(item)
       
-            
-            # data= list(cart.items())
-            # print(data)
-            # cartArray= np.array(data)
-            # print(cartArray[0][0])     
+  
                  
         else:
             buying=False
   
     return cart
 
+def temperature(currentDate, currentTime, thermometer,client):
+    payload={
+            "id_store":str(thermometer.get("id_store")),
+            "id_thermometer":str(thermometer.get("id_thermometer")),
+            "currentTemp":str(int(np.random.uniform(0,30))),
+            "maxtemp":str(thermometer.get("maxtemp")),
+            "mintemp":str(thermometer.get("mintemp")),
+            "currentTime":str(currentTime),
+            "currentDate":str(currentDate)
+            }
+    client.publish("Plazas/Thermometer/Temperature", json.dumps(payload), qos=0) 
+    
 def main():
     host = "broker.hivemq.com"
     client = paho.mqtt.client.Client("Publicador", False)
     client.qos = 0
     client.connect(host=host)
 
-    currentTime = datetime.datetime.now().replace(hour=7, minute=0)
+    currentTime=datetime.datetime(last_date.year,last_date.month,last_date.day).replace(hour=9, minute=0)+ datetime.timedelta(days=1)
+    currentTimePerson=currentTime
     days=(calendar.monthrange(currentTime.year, currentTime.month)[1])-currentTime.day
     waitingLStore1=0
     waitingLStore2=0
     buyingInStore1=[]
     buyingInStore2=[]
+    
+    
 
-    while(currentTime.month!=7):
+    while(True):
         days=(calendar.monthrange(currentTime.year, currentTime.month)[1])-currentTime.day
         while(days>0):
-            print("Current Time")
-            print(currentTime)
+           
             while(currentTime.hour < 20):
+                print('------------------------------') 
+                print("CURRENT TIME "+str(currentTime))
                 count=1
-                 # peopleVisiting=int(np.random.uniform(1,250))
-                peopleVisiting=20
-                while(count <= peopleVisiting):
+                currentDate=date(currentTime.year,currentTime.month,currentTime.day)
+                for x in thermo:
+                    temperature(currentDate, currentTime, x, client)
+
+                if(len(peopleInStore1)==int(stores[0].get("max_capacity")) or len(peopleInStore2)==int(stores[1].get("max_capacity"))):
+                    peopleVisiting=0
+                else:
+                    peopleVisiting=int(np.random.uniform(1,250))
+                    # peopleVisiting=20
                 
+                while(count <= peopleVisiting):
+                    currentTime = currentTime.replace(minute=0) + datetime.timedelta(minutes=int(np.random.uniform(1,45)))
                     storeID=int(np.random.uniform(1,3))
-                    print("Cuenta"+str(count))
-                    if(storeID==1 and len(peopleInStore1)<2):
+                    print('------------------------------') 
+                    print("INDIVIDUO "+str(count))
+                    if(storeID==1 and len(peopleInStore1)<int(stores[0].get("max_capacity"))):
                         entrance(peopleInStore1,client, currentTime,storeID, waitingLStore1)
                         time.sleep(0.5)
-                    elif(storeID==2 and len(peopleInStore2)<2):
+                    elif(storeID==2 and len(peopleInStore2)<int(stores[1].get("max_capacity"))):
                         entrance(peopleInStore2,client, currentTime,storeID, waitingLStore2)
                         time.sleep(0.5)
-                    elif(storeID==1 and len(peopleInStore1)==2):
-                        print("Entre Espera 1"+str(waitingLStore1))
+                    elif(storeID==1 and len(peopleInStore1)==int(stores[0].get("max_capacity"))):
                         waitingLStore1=waitingLStore1+1
                         time.sleep(0.5)
-                        print("Entre Espera 1"+str(waitingLStore1))
-                    elif(storeID==2 and len(peopleInStore2)==2):
-                        print("Entre Espera 2"+str(waitingLStore2))
+                        print("ENTRE ESPERA 1 "+str(waitingLStore1))
+                    elif(storeID==2 and len(peopleInStore2)==int(stores[1].get("max_capacity"))):
                         waitingLStore2=waitingLStore2+1
                         time.sleep(0.5)
-                        print("Entre Espera 2"+str(waitingLStore2))
+                        print("ENTRE ESPERA 2 "+str(waitingLStore2))
                     count+=1
-                print(currentTime.day)
+                print('------------------------------') 
+                print("DAYS "+str(days))
                 print("In Store 1")
                 print(len(peopleInStore1))
                 print(peopleInStore1)
                 print("In Store 2")
                 print(len(peopleInStore2))
                 print(peopleInStore2)
-                print("ESPERA 1")
-                print(waitingLStore1)
-                print("ESPERA 2")
-                print(waitingLStore2)
+                print("ESPERA 1 "+str(waitingLStore1))
+                print("ESPERA 2 "+str(waitingLStore2))
                 peopleBuying=int(np.random.uniform(1,len(peopleInStore1)+len(peopleInStore2)))
-                print("People Buying "+str(peopleBuying))
+                print('------------------------------') 
+                print("PEOPLE IN STORE 1: "+ str(len(peopleInStore1))+" PEOPLE IN STORE 2: "+str(len(peopleInStore2))+" SUM: "+str(len(peopleInStore1)+len(peopleInStore2)))
+                print("PEOPLE BUYING "+str(peopleBuying))
                 count2=1
                 while(count2<=peopleBuying):
-                    print("Buyer "+str(count2))
+                    
+                    print('------------------------------') 
+                    print("BUYER "+str(count2))
                     count2=count2+1
                     store=int(np.random.uniform(1,3))
+                    person={}
+                    getClients(clients,clientsIDs)
                     if(store==1 and len(peopleInStore1)!=0):
-                        person=peopleInStore1[int(np.random.uniform(0,len(peopleInStore1)))]
-                        time.sleep(0.5)
+                        person=random.choice(peopleInStore1)
+                        time.sleep(1)
     
                     elif(store==2 and len(peopleInStore2)!=0):
-                        person=peopleInStore1[int(np.random.uniform(0,len(peopleInStore1)))]
-                    currentTime = currentTime + datetime.timedelta(seconds=1)
-                    carrito=takeProduct(affiliates[0], '1',currentTime,client,date(currentTime.year,currentTime.month,currentTime.day).isoformat())
-                    payload={
-                    "cart":str(carrito),
-                    "id_client":str(person.get("id_client")),
-                    "id_store":str(store),
-                    "currentTime":str(currentTime),
-                    "currentDate":str(currentDate),
-                    "bank":str(int(np.random.uniform(1,4)))
-                    }
-                    print("Payload")
-                    print(payload)
-                    client.publish("Plazas/Purchase/Bill", json.dumps(payload), qos=0)     
+                        person=random.choice(peopleInStore2)
+                        time.sleep(1)
+                    personId={'id_client':str(person.get('id_client'))}
 
-
-
-                currentTime = currentTime + datetime.timedelta(hours=1)
+                    if(len(person)!=0 and personId in clientsIDs):
+                        if(person.get('id_client') in visits):
+                            currentTime = currentTime.replace(minute=0) + datetime.timedelta(minutes=int(np.random.uniform(visits[person.get('id_client')].minute,59)))
+                        carrito=takeProduct(person, str(store),currentTime,client,date(currentTime.year,currentTime.month,currentTime.day).isoformat())
+                        if(len(carrito)!=0 and len(person)!=0):
+                            payload={
+                            "cart":str(carrito),
+                            "id_client":str(person.get("id_client")),
+                            "id_store":str(store),
+                            "currentTime":str(currentTime),
+                            "currentDate":str(currentTime),
+                            "bank":str(int(np.random.uniform(1,4)))
+                            }
+                            print('------------------------------') 
+                            print("BILL "+"HOUR "+str(currentTime))
+                            print(payload)
+                            client.publish("Plazas/Purchase/Bill", json.dumps(payload), qos=0)
+                            print("PERSON")
+                            print(person)
+                            print("STORE")
+                            print(store) 
+                                           
+                        if(store==1):
+                            
+                            leavingStore(peopleInStore1, str(store), waitingLStore1,currentTime,person,client)
+                            time.sleep(0.9)
+                            
+                        elif(store==2):
+                            
+                            leavingStore(peopleInStore2, str(store), waitingLStore2,currentTime,person,client)
+                            time.sleep(0.9)
+                    if(person.get('id_client') in visits):
+                        visits.pop(person.get('id_client'))        
+                    person={}
+                if(currentTime.hour ==21):
+                    waitingLStore2=0
+                    waitingLStore1=0
+                    while(len(peopleInStore1)+len(peopleInStore2)>0):
+                        if(len(peopleInStore1)>0):
+                            leavingStore(peopleInStore1, '1', waitingLStore1,currentTime,person,client)                           
+                        if(len(peopleInStore2)>0):
+                            leavingStore(peopleInStore2, '2', waitingLStore2,currentTime,person,client)
+                            
+                    
+                                               
+                currentTime = currentTime.replace(minute=0) + datetime.timedelta(hours=1)
+            currentTime = currentTime.replace(hour=9,minute=0) + datetime.timedelta(days=1)
             days-=1
                 
                 
 
 
-# currentTime = datetime.datetime.now().replace(hour=9, minute=0)
-# currentDate=date(currentTime.year,currentTime.month,currentTime.day).isoformat()
-# host = "broker.hivemq.com"
-# client = paho.mqtt.client.Client("Publicador", False)
-# client.qos = 0
-# client.connect(host=host)
 
 
-main()
-# count=1
-# # peopleVisiting=int(np.random.uniform(1,250))
-# peopleVisiting=20
-# waitingLStore1=0
-# waitingLStore2=0
-
-# print(peopleVisiting)
-# while(count <= 20):
-   
-#     storeID=int(np.random.uniform(1,3))
-#     print("Cuenta"+str(count))
-#     if(storeID==1 and len(peopleInStore1)<2):
-#         entrance(peopleInStore1,client, currentTime,storeID, waitingLStore1)
-#     elif(storeID==2 and len(peopleInStore2)<2):
-#         entrance(peopleInStore2,client, currentTime,storeID, waitingLStore2)
-#     elif(storeID==1 and len(peopleInStore1)==2):
-#         print("Entre Espera 1"+str(waitingLStore1))
-#         waitingLStore1=waitingLStore1+1
-#         print("Entre Espera 1"+str(waitingLStore1))
-#     elif(storeID==2 and len(peopleInStore2)==2):
-#         print("Entre Espera 2"+str(waitingLStore2))
-#         waitingLStore2=waitingLStore2+1
-#         print("Entre Espera 2"+str(waitingLStore2))
-        
-
-
-#     count+=1
-
-
-# substractQuantity('1', '1', '1',str(currentTime),str(date))
-
-
-
-# substractQuantity(shelfID, storeID, quantity,currentHour):
-
-# storeID=int(np.random.uniform(1,2))
-# if(storeID==1):
-#     entrance(peopleInStore1)
-# else:
-#     entrance(peopleInStore2)
-
-# carrito=takeProduct(affiliates[0], '1')
-
-
-# if(len(carrito)!=0):
-#     print(carrito)
-#     queryFunction(carrito,'1092087244','1','20200602','130000','1')
+if __name__ == "__main__":
+    main()

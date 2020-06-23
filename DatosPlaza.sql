@@ -10,6 +10,9 @@ delete from plazas.cost;
 delete from plazas.shelf;
 delete from plazas.shelf_quantity;
 delete from plazas.stored_in;
+delete from plazas.bill;
+delete from plazas.bill_detail;
+delete from plazas.visit;
 
 insert into plazas.store
     (id_store, name, max_capacity, openingHour, closingHour)
@@ -1480,6 +1483,55 @@ insert into plazas.client
 values
     ('0944372159', 'Iain Loftin', 'M', 6387009);
 
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('0944372159',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('2558581914',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('4989415608',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('4069070951',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('0556499431',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('6255166653',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('6109275295',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('1057716197',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('4808244407',0);
+
+insert into plazas.affiliate
+    (id_client, points)
+values
+    ('9561867500',0);
 
 insert into plazas.employee
     (id_employee, name, identification, salary, gender, id_store)

@@ -36,16 +36,16 @@ cur.execute(query)
 cur.close()
 myConnection.commit()
 
-# query="""CREATE  TRIGGER AffiliatePoints 
-# AFTER INSERT
-#    ON plazas.bill
-#    FOR EACH ROW
-#        EXECUTE PROCEDURE points()
-# """
-# cur = myConnection.cursor()
-# cur.execute(query)
-# cur.close()
-# myConnection.commit()
+query="""CREATE  TRIGGER AffiliatePoints 
+AFTER INSERT
+   ON plazas.bill
+   FOR EACH ROW
+       EXECUTE PROCEDURE points()
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
 
 query="""CREATE OR REPLACE FUNCTION affiliateClient()
   RETURNS trigger AS
@@ -67,13 +67,44 @@ cur.execute(query)
 cur.close()
 myConnection.commit()
 
-# query="""CREATE TRIGGER AffiliateClient 
-# AFTER INSERT
-#    ON plazas.visit
-#    FOR EACH ROW
-#        EXECUTE PROCEDURE affiliateClient()
-# """
-# cur = myConnection.cursor()
-# cur.execute(query)
-# cur.close()
-# myConnection.commit()
+
+query="""CREATE TRIGGER AffiliateClient 
+AFTER INSERT
+   ON plazas.visit
+   FOR EACH ROW
+       EXECUTE PROCEDURE affiliateClient()
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
+
+query="""CREATE OR REPLACE FUNCTION entrancepoints()
+  RETURNS trigger AS
+$$
+DECLARE
+BEGIN
+    IF NEW.id_client IN (SELECT plazas.affiliate.id_client FROM plazas.affiliate) THEN
+        UPDATE plazas.affiliate set points=plazas.affiliate.points +1 WHERE plazas.affiliate.id_client=NEW.id_client;
+    END IF;
+
+    RETURN NEW;
+END;
+$$
+LANGUAGE plpgsql;
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
+
+query="""CREATE  TRIGGER SumarEntrada 
+AFTER INSERT
+   ON plazas.visit
+   FOR EACH ROW
+       EXECUTE PROCEDURE entrancepoints()
+"""
+cur = myConnection.cursor()
+cur.execute(query)
+cur.close()
+myConnection.commit()
